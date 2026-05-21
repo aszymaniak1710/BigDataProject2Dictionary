@@ -2,6 +2,10 @@ package com.example.bigdata.dictionary;
 
 import com.example.bigdata.models.Machine;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.serialization.StringSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,14 +18,13 @@ import java.util.concurrent.ConcurrentHashMap;
 public class MachineDictionary {
 
     private final ConcurrentHashMap<String, Machine> machines = new ConcurrentHashMap<>();
-
     private static final Logger logger = LoggerFactory.getLogger(MachineDictionary.class);
     private static MachineDictionary instance;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private String dictionaryPath;
+    private String dictionaryTopic;
+    private KafkaProducer<String, String> kafkaProducer;
     private WatchService watchService;
-    private Thread watcherThread;
-    private volatile boolean running = false;
 
     private MachineDictionary() {
     }
@@ -33,12 +36,19 @@ public class MachineDictionary {
         return instance;
     }
 
-    public void loadFromFile(String path) {
+    public void init(String path, String bootstrapServers, String dictionaryTopic) {
         this.dictionaryPath = path;
-        reloadDictionary();
+        this.dictionaryTopic = dictionaryTopic;
+        Properties props = new Properties();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.ACKS_CONFIG, "all");
+        this.kafkaProducer = new KafkaProducer<>(props);
+        reloadAndPublishDictionary();
     }
 
-    private synchronized void reloadDictionary() {
+    private synchronized void reloadAndPublishDictionary() {
         try {
             File file = new File(dictionaryPath);
             if (!file.exists()) {
@@ -46,90 +56,59 @@ public class MachineDictionary {
                 return;
             }
             Machine[] machineArray = objectMapper.readValue(file, Machine[].class);
-            machines.clear();
-            for (Machine machine : machineArray) {
-                machines.put(machine.machineId, machine);
+
+            // 1. Tworzymy pomocniczy zbiór kluczy, które AKTUALNIE są w pliku JSON
+            Set<String> currentJsonKeys = new HashSet<>();
+
+            for (Machine newMachine : machineArray) {
+                currentJsonKeys.add(newMachine.machineId);
+                Machine oldMachine = machines.get(newMachine.machineId);
+
+                if (oldMachine == null || !oldMachine.equals(newMachine)) {
+                    String machineJson = objectMapper.writeValueAsString(newMachine);
+                    ProducerRecord<String, String> record = new ProducerRecord<>(dictionaryTopic, newMachine.machineId, machineJson);
+                    kafkaProducer.send(record);
+                    machines.put(newMachine.machineId, newMachine);
+                    logger.info("[DICTIONARY] Updated/Added machine: {}", newMachine.machineId);
+                }
             }
-            logger.info("[DICTIONARY RELOAD] Loaded {} machines from {}", machines.size(), dictionaryPath);
-            logMachinesList();
+
+            machines.keySet().stream()
+                    .filter(rememberedKey -> !currentJsonKeys.contains(rememberedKey))
+                    .toList()
+                    .forEach(deletedKey -> {
+                        ProducerRecord<String, String> tombstoneRecord = new ProducerRecord<>(dictionaryTopic, deletedKey, null);
+                        kafkaProducer.send(tombstoneRecord);
+                        machines.remove(deletedKey);
+                        logger.warn("[DICTIONARY DETECTED DELETION] Sent TOMBSTONE for machine: {}", deletedKey);
+                    });
         } catch (IOException e) {
-            logger.error("[DICTIONARY ERROR] Failed to load dictionary from {}: {}", dictionaryPath, e.getMessage(), e);
+            logger.error("[DICTIONARY ERROR] Failed to process/publish dictionary: {}", e.getMessage(), e);
         }
     }
 
-    private void logMachinesList() {
-        if (machines.isEmpty()) {
-            logger.info("[DICTIONARY] No machines loaded");
-            return;
-        }
-        logger.info("[DICTIONARY] Loaded machines:");
-        machines.values().stream()
-                .sorted(Comparator.comparing(m -> m.machineId))
-                .forEach(m -> logger.info(m.toString()));
-    }
-
-    public int size() {
-        return machines.size();
-    }
-
-    public void startFileWatcher() {
-        if (running) {
-            logger.warn("[DICTIONARY] File watcher already running");
-            return;
-        }
+    public void startMonitoring() {
         try {
             watchService = FileSystems.getDefault().newWatchService();
             Path dictionaryDir = Paths.get(dictionaryPath).getParent();
             String fileName = Paths.get(dictionaryPath).getFileName().toString();
             dictionaryDir.register(watchService, StandardWatchEventKinds.ENTRY_MODIFY, StandardWatchEventKinds.ENTRY_CREATE);
-            running = true;
-            watcherThread = new Thread(() -> {
-                logger.info("[DICTIONARY WATCHER] Started monitoring {}", dictionaryPath);
-                runWatchLoop(fileName);
-                logger.info("[DICTIONARY WATCHER] Stopped");
-            }, "MachineDictionary-Watcher");
-
-            watcherThread.setDaemon(true);
-            watcherThread.start();
-
+            runWatchLoop(fileName);
         } catch (IOException e) {
             logger.error("[DICTIONARY WATCHER] Failed to start: {}", e.getMessage(), e);
         }
     }
 
-
-    public void stopFileWatcher() {
-        if (!running) {
-            return;
-        }
-        running = false;
-        if (watchService != null) {
-            try {
-                watchService.close();
-            } catch (IOException e) {
-                logger.error("[DICTIONARY WATCHER] Error closing watch service: {}", e.getMessage());
-            }
-        }
-        if (watcherThread != null) {
-            try {
-                watcherThread.join(5000);  // Max 5s czekania
-            } catch (InterruptedException e) {
-                logger.warn("[DICTIONARY WATCHER] Failed to join watcher thread");
-            }
-        }
-        logger.info("[DICTIONARY] File watcher stopped");
-    }
-
     private void runWatchLoop(String fileName) {
-        while (running) {
-            try {
+        try {
+            while (true) {
                 WatchKey key = watchService.take();
                 processWatchKey(key, fileName);
                 key.reset();
-            } catch (ClosedWatchServiceException ignored) {
-            } catch (Exception e) {
-                logger.error("[DICTIONARY WATCHER] Error: {}", e.getMessage(), e);
             }
+        } catch (ClosedWatchServiceException ignored) {
+        } catch (Exception e) {
+            logger.error("[DICTIONARY WATCHER] Error: {}", e.getMessage(), e);
         }
     }
 
@@ -144,10 +123,22 @@ public class MachineDictionary {
 
     private void handleFileChange() {
         try {
-            Thread.sleep(100);
+            Thread.sleep(150);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        reloadDictionary();
+        reloadAndPublishDictionary();
+    }
+
+    public void close() {
+        if (watchService != null) {
+            try {
+                watchService.close();
+            } catch (IOException e) {
+                logger.error("[DICTIONARY WATCHER] Error closing watch service: {}", e.getMessage());
+            }
+        }
+        kafkaProducer.close();
+        logger.info("[DICTIONARY] Kafka Producer closed");
     }
 }
