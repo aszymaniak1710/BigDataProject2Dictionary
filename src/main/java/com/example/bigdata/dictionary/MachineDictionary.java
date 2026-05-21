@@ -120,7 +120,7 @@ public class MachineDictionary {
 
     private void handleFileChange() {
         try {
-            Thread.sleep(150);
+            Thread.sleep(300);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
