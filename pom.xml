@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>org.example</groupId>
-    <artifactId>HouseStats</artifactId>
+    <artifactId>MachineStream</artifactId>
     <version>1.0-SNAPSHOT</version>
 
     <properties>
@@ -58,10 +58,20 @@
             <artifactId>jackson-datatype-jsr310</artifactId>
             <version>${jackson-databind.version}.0</version>
         </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>2.0.7</version>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.4.11</version>
+        </dependency>
     </dependencies>
 
     <build>
-        <finalName>house-stats-app</finalName>
+        <finalName>machine-stream</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -71,6 +81,7 @@
                     <archive>
                         <manifest>
                             <addClasspath>true</addClasspath>
+                            <mainClass>com.example.bigdata.MachineStatsApp</mainClass>
                         </manifest>
                     </archive>
                 </configuration>

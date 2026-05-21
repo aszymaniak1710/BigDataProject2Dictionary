@@ -1,4 +1,4 @@
-package com.example.bigdata;
+package com.example.bigdata.serde;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.common.errors.SerializationException;

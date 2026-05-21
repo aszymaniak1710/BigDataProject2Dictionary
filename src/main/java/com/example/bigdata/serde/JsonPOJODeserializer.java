@@ -1,6 +1,8 @@
-package com.example.bigdata;
+package com.example.bigdata.serde;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.serialization.Deserializer;
 
@@ -20,6 +22,8 @@ public class JsonPOJODeserializer<T> implements Deserializer<T> {
      * Default constructor needed by Kafka
      */
     public JsonPOJODeserializer() {
+        objectMapper.registerModule(new JavaTimeModule());
+        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 
     @SuppressWarnings("unchecked")
