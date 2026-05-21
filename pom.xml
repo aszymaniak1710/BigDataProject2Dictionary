@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>org.example</groupId>
-    <artifactId>MachineStream</artifactId>
+    <artifactId>MachineDictionary</artifactId>
     <version>1.0-SNAPSHOT</version>
 
     <properties>
@@ -71,7 +71,7 @@
     </dependencies>
 
     <build>
-        <finalName>machine-stream</finalName>
+        <finalName>machine-dictionary</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -81,7 +81,7 @@
                     <archive>
                         <manifest>
                             <addClasspath>true</addClasspath>
-                            <mainClass>com.example.bigdata.MachineStatsApp</mainClass>
+                            <mainClass>com.example.bigdata.MachineDictionaryApp</mainClass>
                         </manifest>
                     </archive>
                 </configuration>

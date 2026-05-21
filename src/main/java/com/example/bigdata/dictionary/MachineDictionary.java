@@ -56,10 +56,7 @@ public class MachineDictionary {
                 return;
             }
             Machine[] machineArray = objectMapper.readValue(file, Machine[].class);
-
-            // 1. Tworzymy pomocniczy zbiór kluczy, które AKTUALNIE są w pliku JSON
             Set<String> currentJsonKeys = new HashSet<>();
-
             for (Machine newMachine : machineArray) {
                 currentJsonKeys.add(newMachine.machineId);
                 Machine oldMachine = machines.get(newMachine.machineId);
@@ -72,7 +69,6 @@ public class MachineDictionary {
                     logger.info("[DICTIONARY] Updated/Added machine: {}", newMachine.machineId);
                 }
             }
-
             machines.keySet().stream()
                     .filter(rememberedKey -> !currentJsonKeys.contains(rememberedKey))
                     .toList()
@@ -82,6 +78,7 @@ public class MachineDictionary {
                         machines.remove(deletedKey);
                         logger.warn("[DICTIONARY DETECTED DELETION] Sent TOMBSTONE for machine: {}", deletedKey);
                     });
+            kafkaProducer.flush();
         } catch (IOException e) {
             logger.error("[DICTIONARY ERROR] Failed to process/publish dictionary: {}", e.getMessage(), e);
         }
@@ -138,7 +135,9 @@ public class MachineDictionary {
                 logger.error("[DICTIONARY WATCHER] Error closing watch service: {}", e.getMessage());
             }
         }
-        kafkaProducer.close();
-        logger.info("[DICTIONARY] Kafka Producer closed");
+        if (kafkaProducer != null) {
+            kafkaProducer.close();
+            logger.info("[DICTIONARY] Kafka Producer closed");
+        }
     }
 }

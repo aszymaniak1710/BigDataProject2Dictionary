@@ -8,9 +8,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
 
-public class MachineStatsApp {
+public class MachineDictionaryApp {
 
-    private static final Logger logger = LoggerFactory.getLogger(MachineStatsApp.class);
+    private static final Logger logger = LoggerFactory.getLogger(MachineDictionaryApp.class);
 
     public static void main(String[] args) {
         Properties appConfig = loadProperties();
@@ -34,7 +34,7 @@ public class MachineStatsApp {
 
     private static Properties loadProperties() {
         Properties props = new Properties();
-        try (InputStream input = MachineStatsApp.class
+        try (InputStream input = MachineDictionaryApp.class
                 .getClassLoader()
                 .getResourceAsStream("application.properties")) {
             if (input == null) {
